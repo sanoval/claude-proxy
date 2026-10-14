@@ -6,6 +6,16 @@ Small Node script that switches Claude Code between direct Anthropic access and 
 - `claude-proxy off` stops 9router and removes those env keys from `~/.claude/settings.json`.
 - `claude-proxy status` reports whether 9router is running and whether the proxy config is present.
 
+## Prerequisites
+
+- **OS:** macOS or Linux. The script shells out to `lsof`, `pgrep` and `ps`, which are standard on both. Windows is not supported.
+- **Node.js:** on PATH. The script runs via `#!/usr/bin/env node`.
+- **9router:** installed and on PATH, since `on` launches it with `9router --no-browser --tray`.
+- **Claude Code:** installed, with a `~/.claude` directory. The script creates `~/.claude/settings.json` if it is missing, but not the directory.
+- **Proxy auth token:** issued for your account and exported as `CLAUDE_PROXY_AUTH_TOKEN` (see step 2).
+- **Install directory on PATH:** if you use the install command below, `~/.local/bin` must be on PATH.
+- **Port 20128 free:** `on` expects 9router to listen there.
+
 ## Setup
 
 1. Put the script on your PATH, for example:
@@ -21,8 +31,6 @@ Small Node script that switches Claude Code between direct Anthropic access and 
    ```
 
    `on` refuses to run if this is unset, so the token is never stored in the script or the repo.
-
-3. Requires `9router` on PATH and Node.js.
 
 ## Usage
 
