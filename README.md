@@ -54,3 +54,7 @@ claude-proxy off
 - Port `20128` is hardcoded. `off` force-kills whatever listens on that port, not only 9router.
 - Model mapping and base URL live in `config.json`; edit them there. Every key in the config is written into `settings.json` on `on` and removed on `off`.
 - `off` reads the config to know which keys to remove. If the config is unreadable, it stops 9router but leaves `settings.json` unchanged.
+
+## License
+
+[MIT](LICENSE)
