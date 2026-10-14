@@ -1,0 +1,128 @@
+#!/usr/bin/env node
+
+const fs = require('fs');
+const path = require('path');
+const { execSync, spawn } = require('child_process');
+const os = require('os');
+
+const SETTINGS_FILE = path.join(os.homedir(), '.claude', 'settings.json');
+const PORT = 20128;
+
+// The proxy auth token is read from the environment so it never lives in this file.
+const AUTH_TOKEN = process.env.CLAUDE_PROXY_AUTH_TOKEN;
+
+const PROXY_ENV = {
+  ANTHROPIC_BASE_URL: 'http://127.0.0.1:20128/v1',
+  ANTHROPIC_AUTH_TOKEN: AUTH_TOKEN,
+  ANTHROPIC_DEFAULT_FABLE_MODEL: 'cc/claude-fable-5',
+  ANTHROPIC_DEFAULT_OPUS_MODEL: 'cx/gpt-5.6-sol',
+  ANTHROPIC_DEFAULT_SONNET_MODEL: 'cx/gpt-5.6-terra',
+  ANTHROPIC_DEFAULT_HAIKU_MODEL: 'ag/gemini-3.8-flash'
+};
+
+const PROXY_KEYS = Object.keys(PROXY_ENV);
+
+function readSettings() {
+  try {
+    return JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8'));
+  } catch (err) {
+    return {};
+  }
+}
+
+function writeSettings(data) {
+  fs.writeFileSync(SETTINGS_FILE, JSON.stringify(data, null, 2) + '\n', 'utf8');
+}
+
+function is9RouterRunning() {
+  try {
+    const out = execSync('pgrep -f "9router" 2>/dev/null', { encoding: 'utf8' }).trim();
+    return out.length > 0;
+  } catch {
+    return false;
+  }
+}
+
+function kill9Router() {
+  try {
+    // Kill by port
+    const pidsPort = execSync(`lsof -ti:${PORT} 2>/dev/null`, { encoding: 'utf8' }).trim().split(/\s+/).filter(Boolean);
+    for (const pid of pidsPort) {
+      try { process.kill(Number(pid), 'SIGKILL'); } catch {}
+    }
+  } catch {}
+
+  try {
+    // Kill processes matching 9router
+    const out = execSync('ps aux 2>/dev/null', { encoding: 'utf8' });
+    const lines = out.split('\n');
+    for (const line of lines) {
+      const lower = line.toLowerCase();
+      if ((lower.includes('node') && lower.includes('9router')) || lower.includes('/bin/9router')) {
+        const parts = line.trim().split(/\s+/);
+        const pid = parts[1];
+        if (pid && pid !== String(process.pid)) {
+          try { process.kill(Number(pid), 'SIGKILL'); } catch {}
+        }
+      }
+    }
+  } catch {}
+}
+
+function start9Router() {
+  const child = spawn('9router', ['--no-browser', '--tray'], {
+    detached: true,
+    stdio: 'ignore',
+    env: process.env
+  });
+  child.unref();
+}
+
+const cmd = process.argv[2];
+
+if (cmd === 'on') {
+  if (!AUTH_TOKEN) {
+    console.error('[claude-proxy] CLAUDE_PROXY_AUTH_TOKEN is not set. Export it in your shell profile and retry.');
+    process.exit(1);
+  }
+
+  if (!is9RouterRunning()) {
+    start9Router();
+    console.log('[claude-proxy] 9router started in background.');
+  } else {
+    console.log('[claude-proxy] 9router already running.');
+  }
+
+  const settings = readSettings();
+  settings.hasCompletedOnboarding = true;
+  settings.env = settings.env || {};
+  Object.assign(settings.env, PROXY_ENV);
+
+  writeSettings(settings);
+  console.log('[claude-proxy] Status: ON. Settings updated with 9router proxy config.');
+} else if (cmd === 'off') {
+  kill9Router();
+  console.log('[claude-proxy] 9router stopped.');
+
+  const settings = readSettings();
+  if (settings.env) {
+    for (const key of PROXY_KEYS) {
+      delete settings.env[key];
+    }
+    if (Object.keys(settings.env).length === 0) {
+      delete settings.env;
+    }
+  }
+
+  writeSettings(settings);
+  console.log('[claude-proxy] Status: OFF. Proxy env removed from settings.json.');
+} else if (cmd === 'status') {
+  const running = is9RouterRunning();
+  const settings = readSettings();
+  const hasProxy = Boolean(settings.env && settings.env.ANTHROPIC_BASE_URL);
+  console.log(`[claude-proxy] Process 9router: ${running ? 'RUNNING' : 'STOPPED'}`);
+  console.log(`[claude-proxy] Proxy config in settings.json: ${hasProxy ? 'ENABLED' : 'DISABLED'}`);
+} else {
+  console.log('Usage: claude-proxy <on|off|status>');
+  process.exit(1);
+}
