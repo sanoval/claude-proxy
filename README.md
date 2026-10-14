@@ -2,6 +2,10 @@
 
 Small Node script that switches Claude Code between direct Anthropic access and a local [9router](https://www.npmjs.com/package/9router) proxy.
 
+## Why
+
+We use a Claude Pro subscription day to day, but it runs out of usage limit partway through long coding sessions. We also have ChatGPT Plus and Google AI Pro. When Claude is out of quota, `claude-proxy on` routes Claude Code through 9router to models from those providers, so work can continue. `claude-proxy off` switches back to direct Anthropic access.
+
 - `claude-proxy on` starts 9router in the background and writes the proxy env (base URL, auth token, model mapping) into `~/.claude/settings.json`.
 - `claude-proxy off` stops 9router and removes those env keys from `~/.claude/settings.json`.
 - `claude-proxy status` reports whether 9router is running and whether the proxy config is present.
