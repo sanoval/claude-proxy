@@ -6,21 +6,38 @@ const { execSync, spawn } = require('child_process');
 const os = require('os');
 
 const SETTINGS_FILE = path.join(os.homedir(), '.claude', 'settings.json');
+const CONFIG_FILE = process.env.CLAUDE_PROXY_CONFIG || path.join(os.homedir(), '.config', 'claude-proxy', 'config.json');
+const PLACEHOLDER_TOKEN = 'replace-with-your-token';
 const PORT = 20128;
 
-// The proxy auth token is read from the environment so it never lives in this file.
-const AUTH_TOKEN = process.env.CLAUDE_PROXY_AUTH_TOKEN;
+// Proxy env comes from the JSON config (see config.example.json).
+// CLAUDE_PROXY_AUTH_TOKEN, when set, overrides ANTHROPIC_AUTH_TOKEN from that file.
+function loadProxyEnv() {
+  let config;
+  try {
+    config = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
+  } catch (err) {
+    throw new Error(`cannot read ${CONFIG_FILE} (${err.message}). Copy config.example.json there and fill it in.`);
+  }
 
-const PROXY_ENV = {
-  ANTHROPIC_BASE_URL: 'http://127.0.0.1:20128/v1',
-  ANTHROPIC_AUTH_TOKEN: AUTH_TOKEN,
-  ANTHROPIC_DEFAULT_FABLE_MODEL: 'cc/claude-fable-5',
-  ANTHROPIC_DEFAULT_OPUS_MODEL: 'cx/gpt-5.6-sol',
-  ANTHROPIC_DEFAULT_SONNET_MODEL: 'cx/gpt-5.6-terra',
-  ANTHROPIC_DEFAULT_HAIKU_MODEL: 'ag/gemini-3.8-flash'
-};
+  if (!config || typeof config !== 'object' || Array.isArray(config)) {
+    throw new Error(`${CONFIG_FILE} must contain a JSON object`);
+  }
+  for (const [key, value] of Object.entries(config)) {
+    if (typeof value !== 'string') {
+      throw new Error(`${CONFIG_FILE}: "${key}" must be a string`);
+    }
+  }
 
-const PROXY_KEYS = Object.keys(PROXY_ENV);
+  const env = { ...config };
+  if (process.env.CLAUDE_PROXY_AUTH_TOKEN) {
+    env.ANTHROPIC_AUTH_TOKEN = process.env.CLAUDE_PROXY_AUTH_TOKEN;
+  }
+  if (!env.ANTHROPIC_AUTH_TOKEN || env.ANTHROPIC_AUTH_TOKEN === PLACEHOLDER_TOKEN) {
+    throw new Error('no auth token: set ANTHROPIC_AUTH_TOKEN in the config or export CLAUDE_PROXY_AUTH_TOKEN');
+  }
+  return env;
+}
 
 function readSettings() {
   try {
@@ -81,8 +98,11 @@ function start9Router() {
 const cmd = process.argv[2];
 
 if (cmd === 'on') {
-  if (!AUTH_TOKEN) {
-    console.error('[claude-proxy] CLAUDE_PROXY_AUTH_TOKEN is not set. Export it in your shell profile and retry.');
+  let proxyEnv;
+  try {
+    proxyEnv = loadProxyEnv();
+  } catch (err) {
+    console.error(`[claude-proxy] ${err.message}`);
     process.exit(1);
   }
 
@@ -96,7 +116,7 @@ if (cmd === 'on') {
   const settings = readSettings();
   settings.hasCompletedOnboarding = true;
   settings.env = settings.env || {};
-  Object.assign(settings.env, PROXY_ENV);
+  Object.assign(settings.env, proxyEnv);
 
   writeSettings(settings);
   console.log('[claude-proxy] Status: ON. Settings updated with 9router proxy config.');
@@ -104,9 +124,18 @@ if (cmd === 'on') {
   kill9Router();
   console.log('[claude-proxy] 9router stopped.');
 
+  let proxyKeys;
+  try {
+    proxyKeys = Object.keys(loadProxyEnv());
+  } catch (err) {
+    console.error(`[claude-proxy] ${err.message}`);
+    console.error('[claude-proxy] settings.json left unchanged; remove the proxy env keys manually.');
+    process.exit(1);
+  }
+
   const settings = readSettings();
   if (settings.env) {
-    for (const key of PROXY_KEYS) {
+    for (const key of proxyKeys) {
       delete settings.env[key];
     }
     if (Object.keys(settings.env).length === 0) {

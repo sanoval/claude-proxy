@@ -12,7 +12,7 @@ Small Node script that switches Claude Code between direct Anthropic access and 
 - **Node.js:** on PATH. The script runs via `#!/usr/bin/env node`.
 - **9router:** installed and on PATH, since `on` launches it with `9router --no-browser --tray`.
 - **Claude Code:** installed, with a `~/.claude` directory. The script creates `~/.claude/settings.json` if it is missing, but not the directory.
-- **Proxy auth token:** issued for your account and exported as `CLAUDE_PROXY_AUTH_TOKEN` (see step 2).
+- **Proxy auth token:** issued for your account, either in the config file or exported as `CLAUDE_PROXY_AUTH_TOKEN` (see step 2).
 - **Install directory on PATH:** if you use the install command below, `~/.local/bin` must be on PATH.
 - **Port 20128 free:** `on` expects 9router to listen there.
 
@@ -24,13 +24,22 @@ Small Node script that switches Claude Code between direct Anthropic access and 
    install -m 755 claude-proxy ~/.local/bin/claude-proxy
    ```
 
-2. Export your proxy auth token in your shell profile:
+2. Create your config from the example. The proxy env (base URL, auth token, model mapping) lives here, not in the script:
+
+   ```sh
+   mkdir -p ~/.config/claude-proxy
+   cp config.example.json ~/.config/claude-proxy/config.json
+   ```
+
+   Fill in `ANTHROPIC_AUTH_TOKEN`. To keep the token out of the file, leave the placeholder and export it in your shell profile instead:
 
    ```sh
    export CLAUDE_PROXY_AUTH_TOKEN="sk-..."
    ```
 
-   `on` refuses to run if this is unset, so the token is never stored in the script or the repo.
+   `CLAUDE_PROXY_AUTH_TOKEN`, when set, overrides the file. `on` refuses to run if neither provides a token.
+
+   To use a config somewhere else, set `CLAUDE_PROXY_CONFIG=/path/to/config.json`.
 
 ## Usage
 
@@ -43,4 +52,5 @@ claude-proxy off
 ## Notes
 
 - Port `20128` is hardcoded. `off` force-kills whatever listens on that port, not only 9router.
-- Model mapping is in `PROXY_ENV` at the top of the script; edit it there.
+- Model mapping and base URL live in `config.json`; edit them there. Every key in the config is written into `settings.json` on `on` and removed on `off`.
+- `off` reads the config to know which keys to remove. If the config is unreadable, it stops 9router but leaves `settings.json` unchanged.
